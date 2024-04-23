@@ -80,12 +80,22 @@ void SingularString::InMsgImpl(Context& ctx, const FieldDescriptor& field,
            [&] {
              if (accessor_case == AccessorCase::VIEW) return;
              ctx.Emit(R"rs(
-                pub fn set_$raw_field_name$(&mut self, val: impl $pb$::SettableValue<$proxied_type$>) {
-                  //~ TODO: Optimize this to not go through the
-                  //~ FieldEntry.
-                  self.$raw_field_name$_mut().set(val);
+              // TODO: Use IntoProxied once string/bytes types support it.
+              pub fn set_$raw_field_name$(&mut self, val: impl std::convert::AsRef<$proxied_type$>) {
+                let string_view: $pbr$::PtrAndLen =
+                  $pbr$::copy_bytes_in_arena_if_needed_by_runtime(
+                    self.as_mutator_message_ref($pbi$::Private),
+                    val.as_ref().into()
+                  ).into();
+
+                unsafe {
+                  $setter_thunk$(
+                    self.as_mutator_message_ref($pbi$::Private).msg(),
+                    string_view
+                  );
                 }
-              )rs");
+              }
+            )rs");
            }},
           {"hazzer",
            [&] {
@@ -147,7 +157,7 @@ void SingularString::InMsgImpl(Context& ctx, const FieldDescriptor& field,
                 let has = $hazzer_thunk$(self.raw_msg());
                 $pbi$::new_vtable_field_entry(
                   $pbi$::Private,
-                  self.as_mutator_message_ref(),
+                  self.as_mutator_message_ref($pbi$::Private),
                   $Msg$::$vtable_name$,
                   has,
                 )
@@ -163,7 +173,7 @@ void SingularString::InMsgImpl(Context& ctx, const FieldDescriptor& field,
                     $pbi$::Private,
                     $pbi$::RawVTableMutator::new(
                       $pbi$::Private,
-                      self.as_mutator_message_ref(),
+                      self.as_mutator_message_ref($pbi$::Private),
                       $Msg$::$vtable_name$,
                     )
                   )
