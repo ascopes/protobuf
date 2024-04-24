@@ -33,6 +33,7 @@ void SingularMessage::InMsgImpl(Context& ctx, const FieldDescriptor& field,
             {"getter_mut_thunk", ThunkName(ctx, field, "get_mut")},
             {"clearer_thunk", ThunkName(ctx, field, "clear")},
             {"hazzer_thunk", ThunkName(ctx, field, "has")},
+            {"setter_thunk", ThunkName(ctx, field, "set")},
             {
                 "getter_body",
                 [&] {
@@ -67,39 +68,34 @@ void SingularMessage::InMsgImpl(Context& ctx, const FieldDescriptor& field,
                 }
               )rs");
              }},
+            {"getter_mut_body",
+             [&] {
+               if (ctx.is_cpp()) {
+                 ctx.Emit({}, R"rs(
+                  let raw_msg = unsafe { $getter_mut_thunk$(self.raw_msg()) };
+                  $msg_type$Mut::from_parent($pbi$::Private,
+                  self.as_mutator_message_ref($pbi$::Private), raw_msg)
+                 )rs");
+               } else {
+                 ctx.Emit({}, R"rs(
+                  let raw_msg = unsafe { 
+                    $getter_mut_thunk$(self.raw_msg(), self.arena().raw())
+                  };
+                  $msg_type$Mut::from_parent($pbi$::Private,
+                    self.as_mutator_message_ref($pbi$::Private), raw_msg)
+                )rs");
+               }
+             }},
             {"getter_mut",
              [&] {
                if (accessor_case == AccessorCase::VIEW) {
                  return;
                }
+
                ctx.Emit({}, R"rs(
-                  pub fn $raw_field_name$_mut(&mut self) -> $msg_type$Mut<'_> {
-                    self.$raw_field_name$_entry().or_default()
-                  }
-                )rs");
-             }},
-            {"private_getter_entry",
-             [&] {
-               if (accessor_case == AccessorCase::VIEW) {
-                 return;
-               }
-               ctx.Emit({}, R"rs(
-                fn $raw_field_name$_entry(&mut self)
-                    -> $pb$::FieldEntry<'_, $msg_type$> {
-                  static VTABLE: $pbr$::MessageVTable =
-                    $pbr$::MessageVTable::new($pbi$::Private,
-                                              $getter_thunk$,
-                                              $getter_mut_thunk$,
-                                              $clearer_thunk$);
-                  unsafe {
-                    let has = self.has_$raw_field_name$();
-                    $pbi$::new_vtable_field_entry($pbi$::Private,
-                      self.as_mutator_message_ref(),
-                      &VTABLE,
-                      has)
-                  }
-                }
-                )rs");
+                 pub fn $raw_field_name$_mut(&mut self) -> $msg_type$Mut<'_> {
+                    $getter_mut_body$
+               })rs");
              }},
             {"getter_opt",
              [&] {
@@ -111,14 +107,44 @@ void SingularMessage::InMsgImpl(Context& ctx, const FieldDescriptor& field,
             }
             )rs");
              }},
+            {"setter_body",
+             [&] {
+               if (accessor_case == AccessorCase::VIEW) return;
+               if (ctx.is_upb()) {
+                 ctx.Emit({}, R"rs(
+                  // The message and arena are dropped after the setter. The
+                  // memory remains allocated as we fuse the arena with the
+                  // parent message's arena.
+                  let mut msg = val.into($pbi$::Private);
+                  self.as_mutator_message_ref($pbi$::Private)
+                    .arena($pbi$::Private)
+                    .fuse(msg.as_mutator_message_ref($pbi$::Private).arena($pbi$::Private));
+
+                  unsafe {
+                    $setter_thunk$(self.as_mutator_message_ref($pbi$::Private).msg(),
+                      msg.as_mutator_message_ref($pbi$::Private).msg());
+                  }
+                )rs");
+               } else {
+                 ctx.Emit({}, R"rs(
+                  // Prevent the memory from being deallocated. The setter
+                  // transfers ownership of the memory to the parent message.
+                  let mut msg = std::mem::ManuallyDrop::new(val.into($pbi$::Private));
+                  unsafe {
+                    $setter_thunk$(self.as_mutator_message_ref($pbi$::Private).msg(),
+                      msg.as_mutator_message_ref($pbi$::Private).msg());
+                  }
+                )rs");
+               }
+             }},
             {"setter",
              [&] {
                if (accessor_case == AccessorCase::VIEW) return;
                ctx.Emit(R"rs(
-                pub fn set_$raw_field_name$(&mut self, val: impl $pb$::SettableValue<$msg_type$>) {
-                  //~ TODO: Optimize this to not go through the
-                  //~ FieldEntry.
-                  self.$raw_field_name$_entry().set(val);
+                pub fn set_$raw_field_name$(&mut self,
+                  val: impl $pb$::IntoProxied<$msg_type$>) {
+
+                  $setter_body$
                 }
               )rs");
              }},
@@ -140,7 +166,6 @@ void SingularMessage::InMsgImpl(Context& ctx, const FieldDescriptor& field,
            R"rs(
             $getter$
             $getter_mut$
-            $private_getter_entry$
             $getter_opt$
             $setter$
             $hazzer$
@@ -156,6 +181,7 @@ void SingularMessage::InExternC(Context& ctx,
           {"getter_mut_thunk", ThunkName(ctx, field, "get_mut")},
           {"clearer_thunk", ThunkName(ctx, field, "clear")},
           {"hazzer_thunk", ThunkName(ctx, field, "has")},
+          {"setter_thunk", ThunkName(ctx, field, "set")},
           {"getter_mut",
            [&] {
              if (ctx.is_cpp()) {
@@ -187,12 +213,16 @@ void SingularMessage::InExternC(Context& ctx,
                   $getter_mut$
                   fn $clearer_thunk$(raw_msg: $pbr$::RawMessage);
                   fn $hazzer_thunk$(raw_msg: $pbr$::RawMessage) -> bool;
+                  fn $setter_thunk$(raw_msg: $pbr$::RawMessage,
+                                    field_msg: $pbr$::RawMessage);
                )rs");
 }
 
 void SingularMessage::InThunkCc(Context& ctx,
                                 const FieldDescriptor& field) const {
   ctx.Emit({{"QualifiedMsg", cpp::QualifiedClassName(field.containing_type())},
+            {"FieldMsg", cpp::QualifiedClassName(field.message_type())},
+            {"setter_thunk", ThunkName(ctx, field, "set")},
             {"getter_thunk", ThunkName(ctx, field, "get")},
             {"getter_mut_thunk", ThunkName(ctx, field, "get_mut")},
             {"clearer_thunk", ThunkName(ctx, field, "clear")},
@@ -207,6 +237,9 @@ void SingularMessage::InThunkCc(Context& ctx,
              }
              void $clearer_thunk$($QualifiedMsg$* msg) { msg->clear_$field$(); }
              bool $hazzer_thunk$($QualifiedMsg$* msg) { return msg->has_$field$(); }
+             void $setter_thunk$($QualifiedMsg$* msg, $FieldMsg$* sub_msg) {
+               msg->set_allocated_$field$(sub_msg);
+             }
            )cc");
 }
 
