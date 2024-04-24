@@ -95,6 +95,19 @@ impl Arena {
         //   `UPB_MALLOC_ALIGN` boundary.
         unsafe { slice::from_raw_parts_mut(ptr.cast(), layout.size()) }
     }
+
+    /// Fuse two arenas so they share the same lifetime.
+    pub fn fuse(&self, other: &Arena) {
+        // SAFETY: `self.raw()` and `other.raw()` are both valid UPB arenas.
+        let success = unsafe { upb_Arena_Fuse(self.raw(), other.raw()) };
+        if !success {
+            // Fusing can fail if any of the arenas has an initial block i.e. the arena is
+            // backed by a preallocated chunk of memory that it doesn't own and thus cannot
+            // lifetime extend. This function panics because this is typically not a
+            // recoverable error but a logic bug in a program.
+            panic!("Could not fuse two UPB arenas.");
+        }
+    }
 }
 
 impl Default for Arena {
@@ -117,6 +130,7 @@ extern "C" {
     fn upb_Arena_New() -> Option<RawArena>;
     fn upb_Arena_Free(arena: RawArena);
     fn upb_Arena_Malloc(arena: RawArena, size: usize) -> *mut u8;
+    fn upb_Arena_Fuse(arena1: RawArena, arena2: RawArena) -> bool;
 }
 
 #[cfg(test)]
