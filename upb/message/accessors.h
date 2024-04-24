@@ -74,6 +74,20 @@ UPB_API_INLINE uint32_t upb_Message_WhichOneofFieldNumber(
   return UPB_PRIVATE(_upb_Message_GetOneofCase)(message, oneof_field);
 }
 
+UPB_API_INLINE void upb_Message_ClearOneof(upb_Message* msg,
+                                           const upb_MiniTable* m,
+                                           const upb_MiniTableField* f) {
+  uint32_t field_number = upb_Message_WhichOneofFieldNumber(msg, f);
+  if (field_number == 0) {
+    // if the field_number is zero, the field is not set
+    return;
+  }
+
+  const upb_MiniTableField* field =
+      upb_MiniTable_FindFieldByNumber(m, field_number);
+  upb_Message_ClearBaseField(msg, field);
+}
+
 // NOTE: The default_val is only used for fields that support presence.
 // For repeated/map fields, the resulting upb_Array*/upb_Map* can be NULL if a
 // upb_Array/upb_Map has not been allocated yet. Array/map fields do not have
