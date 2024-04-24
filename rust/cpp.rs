@@ -171,6 +171,13 @@ impl Deref for SerializedData {
     }
 }
 
+// TODO: remove after IntoProxied has been implemented for bytes.
+impl AsRef<[u8]> for SerializedData {
+    fn as_ref(&self) -> &[u8] {
+        self
+    }
+}
+
 impl Drop for SerializedData {
     fn drop(&mut self) {
         // SAFETY: `data` was allocated by the Rust global allocator with a
@@ -182,15 +189,6 @@ impl Drop for SerializedData {
 impl fmt::Debug for SerializedData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(self.deref(), f)
-    }
-}
-
-impl SettableValue<[u8]> for SerializedData {
-    fn set_on<'msg>(self, _private: Private, mut mutator: Mut<'msg, [u8]>)
-    where
-        [u8]: 'msg,
-    {
-        mutator.set(self.as_ref())
     }
 }
 
@@ -240,7 +238,6 @@ pub type MessageAbsentMutData<'msg, T> = crate::vtable::RawVTableOptionalMutator
 pub type BytesPresentMutData<'msg> = crate::vtable::RawVTableOptionalMutatorData<'msg, [u8]>;
 pub type BytesAbsentMutData<'msg> = crate::vtable::RawVTableOptionalMutatorData<'msg, [u8]>;
 pub type InnerBytesMut<'msg> = crate::vtable::RawVTableMutator<'msg, [u8]>;
-pub type InnerPrimitiveMut<'msg, T> = crate::vtable::RawVTableMutator<'msg, T>;
 pub type RawMapIter = UntypedMapIterator;
 
 #[derive(Debug)]

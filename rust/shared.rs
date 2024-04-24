@@ -25,10 +25,10 @@ pub mod __public {
     pub use crate::r#enum::UnknownEnumValue;
     pub use crate::map::{Map, MapIter, MapMut, MapView, ProxiedInMapValue};
     pub use crate::optional::{AbsentField, FieldEntry, Optional, PresentField};
-    pub use crate::primitive::PrimitiveMut;
     pub use crate::proto;
     pub use crate::proxied::{
-        Mut, MutProxy, Proxied, ProxiedWithPresence, SettableValue, View, ViewProxy,
+        IntoProxied, Mut, MutProxied, MutProxy, Proxied, ProxiedWithPresence, SettableValue, View,
+        ViewProxy,
     };
     pub use crate::repeated::{
         ProxiedInRepeated, Repeated, RepeatedIter, RepeatedMut, RepeatedView,
